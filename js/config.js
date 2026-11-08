@@ -24,13 +24,23 @@ export default {
   //                        (노선도 지도와 정차역 화면의 이동 경로에 모두 적용)
   //   예: { name: '대전', arrive: '15:27', via: [[36.50, 127.33], [36.42, 127.40]] }
   route: {
-    origin:      { name: '충주', depart: '18:30' },
+    origin:      { name: '인천국제공항 2터미널', depart: '06:40' },
     stops: [
-      { name: '앙성온천',   arrive: '18:40' },
-      { name: '감곡장호원', arrive: '18:49' },
-      { name: '가남',       arrive: '18:57' },
+      { name: '인천국제공항 1터미널', arrive: '06:46' },
+      { name: '검암',     arrive: '07:00' },
+      { name: '서울',     arrive: '07:22' },
+      { name: '용산',     arrive: '07:28' },
+      { name: '영등포',   arrive: '07:33' },
+      { name: '광명',     arrive: '07:45' },
+      { name: '천안아산', arrive: '08:07' },
+      { name: '오송',     arrive: '08:19' },
+      { name: '대전',     arrive: '08:34' },
+      { name: '김천구미', arrive: '08:59' },
+      { name: '동대구',   arrive: '09:21' },
+      { name: '경주',     arrive: '09:38' },
+      { name: '울산',     arrive: '09:49' },
     ],
-    destination: { name: '부발', arrive: '19:05' },
+    destination: { name: '부산', arrive: '10:12' },
   },
 
   // 다른 예시 (SRT 수서 → 부산)
