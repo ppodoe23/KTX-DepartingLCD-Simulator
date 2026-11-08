@@ -1,17 +1,18 @@
-/* 1280x720 고정 스테이지를 창 크기에 맞춰 축소/확대 */
+/* 반응형: 스테이지는 창을 꽉 채우고(js/layout.js), 안내 내용은 가운데 .content-box 에 배치 */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
 body { font-family: 'Noto Sans KR', 'Noto Sans CJK KR', 'Malgun Gothic', sans-serif; }
 
-#viewport { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+#viewport { position: fixed; inset: 0; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
 #stage {
-  position: relative; width: 1280px; height: 720px; overflow: hidden;
-  transform-origin: center center; background: #eaf7fd;
+  position: absolute; left: 0; top: 0; width: 1280px; height: 720px; overflow: hidden;
+  transform-origin: 0 0; background: #eaf7fd;
 }
+#stage > .content-box, .content-box { position: absolute; inset: auto; }
 #stage > * { position: absolute; inset: 0; }
 
 /* ── 3D 인트로 ───────────────────────────── */
-#gl { width: 1280px; height: 720px; display: block; opacity: 0; }
+#gl { width: 100%; height: 100%; display: block; opacity: 0; }
 #sketch { pointer-events: none; opacity: 0; }
 #sketch path { fill: none; stroke: #9aa6b4; stroke-width: 1.4; stroke-linecap: round; }
 
@@ -58,16 +59,16 @@ body { font-family: 'Noto Sans KR', 'Noto Sans CJK KR', 'Malgun Gothic', sans-se
   position: absolute; border-radius: 50%; background: #fff; filter: blur(28px); opacity: .75;
   animation: drift 40s linear infinite alternate;
 }
-#sky .c1 { width: 520px; height: 160px; left: -80px;  top: -40px; }
-#sky .c2 { width: 460px; height: 150px; left: 760px;  top: 10px;  animation-duration: 55s; opacity: .6; }
-#sky .c3 { width: 700px; height: 220px; left: 300px;  top: 120px; opacity: .45; animation-duration: 70s; }
-#sky .c4 { width: 380px; height: 120px; left: 1000px; top: 160px; opacity: .55; animation-duration: 48s; }
+#sky .c1 { width: 520px; height: 160px; left: -6%;  top: -40px; }
+#sky .c2 { width: 460px; height: 150px; left: 59%;  top: 10px;  animation-duration: 55s; opacity: .6; }
+#sky .c3 { width: 700px; height: 220px; left: 23%;  top: 120px; opacity: .45; animation-duration: 70s; }
+#sky .c4 { width: 380px; height: 120px; left: 78%; top: 160px; opacity: .55; animation-duration: 48s; }
 @keyframes drift { from { transform: translateX(-40px); } to { transform: translateX(60px); } }
 
 #stopLayer { pointer-events: none; }
 
 #tag {
-  inset: auto; left: 892px; top: 26px; width: 340px; height: 50px; opacity: 0;
+  inset: auto; right: 48px; top: 26px; width: 340px; height: 50px; opacity: 0;
   background: linear-gradient(180deg, #2bbf73, #17a35c); color: #fff;
   font-size: 30px; font-weight: 700; letter-spacing: 2px;
   display: flex; align-items: center; justify-content: center;
@@ -145,6 +146,7 @@ body { font-family: 'Noto Sans KR', 'Noto Sans CJK KR', 'Malgun Gothic', sans-se
 /* ── 안전 안내 ───────────────────────────── */
 #notice { opacity: 0; background: linear-gradient(160deg, #3d7cc2, #8ac7ea 40%, #d8eef8 70%, #5b8fc5); }
 #noticeBg { width: 100%; height: 100%; object-fit: cover; }
+.notice-wrap { pointer-events: none; }
 .notice-box {
   position: absolute; left: 56px; right: 56px; top: 74px; height: 540px;
   background: rgba(24, 160, 232, .93); border: 3px solid rgba(255,255,255,.85); border-radius: 10px;
@@ -207,3 +209,24 @@ body { font-family: 'Noto Sans KR', 'Noto Sans CJK KR', 'Malgun Gothic', sans-se
 .st-auto input { width: 56px; font: inherit; padding: 4px 6px; border: 1px solid #cfd6df; border-radius: 6px; margin: 0 2px; }
 .st-auto.off { display: none; }
 .st-row input.st-time:disabled { background: #f0f2f5; color: #99a; }
+
+/* ── 세로 화면 (휴대폰 세로 등) ─────────────── */
+body.portrait .notice-box { left: 24px; right: 24px; top: 300px; height: 636px; }
+body.portrait .notice-scroll p { font-size: 44px; }
+body.portrait #tag { width: 280px; font-size: 26px; right: 24px; }
+body.portrait .sg .route { width: 640px; font-size: 36px; top: 520px; }
+body.portrait .sg .pill-name { top: 590px; }
+body.portrait .sg .pill-arr { top: 776px; }
+body.portrait .sg .pill { width: 640px; }
+body.portrait .sg .arr-label { left: 34px; }
+body.portrait .sg .arr-label b, body.portrait .sg .arr-ampm b { font-size: 66px; }
+body.portrait .sg .arr-arrow { left: 196px; }
+body.portrait .sg .arr-ampm { left: 226px; }
+body.portrait .sg .arr-time { right: 36px; font-size: 92px; }
+/* 휴대폰: 입력칸 글자를 16px 이상으로 (iOS 자동 확대 방지) */
+@media (max-width: 700px) {
+  .st-row input, .st-auto input { font-size: 16px; }
+  .st-tag { width: 46px; }
+  .st-spacer { display: none; }
+  .st-extra { padding-left: 0; flex-wrap: wrap; }
+}

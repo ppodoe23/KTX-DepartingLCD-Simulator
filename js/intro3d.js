@@ -6,8 +6,9 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { splitTime } from './util.js';
 import { SIGUNGU } from './data/sigungu.js';
+import { layout } from './layout.js';
 
-const W = 1280, H = 720;
+const W = 1280, H = 720;   // 기준 화면 (16:9)
 const DECK_Y = 6;           // 고가 선로 높이
 // 출발 화면은 전부 서울남산체. 굵기별로 B / EB 파일이 있으면 쓰고, 없으면 M으로 대체
 const KR_TAIL = '"SeoulNamsan", "Noto Sans KR", "Noto Sans CJK KR", "Malgun Gothic", sans-serif';
@@ -411,27 +412,66 @@ function normalize(model, { height, length, forwardAxis = 'auto', rotationY = 0,
 //  2) 틈이 없으면 carLength(m) 간격으로 분리
 function articulate(g, opts = {}) {
   g.position.set(0, 0, 0); g.rotation.set(0, 0, 0); g.updateMatrixWorld(true);
+  const H = g.userData.height || 4;
+  const v = new THREE.Vector3();
+
+  // 0) 압축 도구가 만든 '인스턴스'(반복 파트 복사)를 개별 메쉬로 풀기
+  const inst = [];
+  g.traverse((o) => { if (o.isInstancedMesh && isShown(o)) inst.push(o); });
+  for (const im of inst) {
+    const m4 = new THREE.Matrix4();
+    for (let i = 0; i < im.count; i++) {
+      im.getMatrixAt(i, m4);
+      const piece = new THREE.Mesh(im.geometry, im.material);
+      piece.matrix.multiplyMatrices(im.matrixWorld, m4);
+      piece.matrix.decompose(piece.position, piece.quaternion, piece.scale);
+      g.add(piece);
+    }
+    im.removeFromParent();
+  }
+  g.updateMatrixWorld(true);
+
   const meshes = [];
   g.traverse((o) => { if (o.isMesh && isShown(o)) meshes.push(o); });
-  const items = meshes.map((o) => {
-    const b = new THREE.Box3().setFromObject(o, true);
-    return { o, x0: b.min.x, x1: b.max.x, cx: (b.min.x + b.max.x) / 2 };
-  });
-  const minX = Math.min(...items.map((i) => i.x0)), maxX = Math.max(...items.map((i) => i.x1));
-  const L = maxX - minX;
-  const H = g.userData.height || 4;
+  const box = new THREE.Box3();
+  for (const o of meshes) box.union(new THREE.Box3().setFromObject(o, true));
+  const minX = box.min.x, maxX = box.max.x, L = maxX - minX;
 
+  // 뼈대(스키닝)가 있거나 carCount: 1이면 통째로
+  const skinned = meshes.some((o) => o.isSkinnedMesh);
+  if (skinned || opts.carCount === 1 || !(L > 0)) {
+    if (skinned) console.warn('[KTX LCD] 열차: 뼈대(스키닝)가 있는 모델이라 객차를 나누지 않고 통째로 움직입니다.');
+    const root = new THREE.Group(), pivot = new THREE.Group();
+    pivot.position.set((minX + maxX) / 2, 0, 0); root.add(pivot); root.updateMatrixWorld(true);
+    pivot.attach(g);
+    root.userData = { cars: [{ obj: pivot, cx: (minX + maxX) / 2, half: L / 2 }], maxX, length: L };
+    return root;
+  }
+
+  // 1) 객차 경계 찾기: 면(삼각형) 단위로 길이 방향 점유를 표시하고 빈 구간(객차 사이 틈)을 찾음
+  const BINS = 3000, res = L / BINS, occ = new Uint8Array(BINS + 1);
+  const triX = (o, cb) => {          // 메쉬의 각 삼각형 [최소x, 최대x, 중심x]
+    const pos = o.geometry.attributes.position, idx = o.geometry.index;
+    const n = idx ? idx.count : pos.count;
+    const xs = [0, 0, 0];
+    for (let t = 0; t + 2 < n; t += 3) {
+      for (let k = 0; k < 3; k++) { v.fromBufferAttribute(pos, idx ? idx.getX(t + k) : t + k).applyMatrix4(o.matrixWorld); xs[k] = v.x; }
+      cb(t / 3, Math.min(xs[0], xs[1], xs[2]), Math.max(xs[0], xs[1], xs[2]), (xs[0] + xs[1] + xs[2]) / 3);
+    }
+  };
+  for (const o of meshes) triX(o, (_, a, b) => {
+    const i0 = Math.max(0, Math.floor((a - minX) / res)), i1 = Math.min(BINS, Math.floor((b - minX) / res));
+    for (let i = i0; i <= i1; i++) occ[i] = 1;
+  });
   let ranges = [];
-  if (opts.carCount > 0) {
+  if (opts.carCount > 1) {
     const w = L / opts.carCount;
     for (let i = 0; i < opts.carCount; i++) ranges.push([minX + i * w, minX + (i + 1) * w]);
   } else {
-    // 틈 찾기: 메쉬 구간을 겹치는 것끼리 합침
-    const sorted = [...items].sort((a, b) => a.x0 - b.x0);
-    for (const it of sorted) {
-      const r = ranges[ranges.length - 1];
-      if (r && it.x0 <= r[1] + 0.03) r[1] = Math.max(r[1], it.x1);
-      else ranges.push([it.x0, it.x1]);
+    let start = null;
+    for (let i = 0; i <= BINS; i++) {
+      if (occ[i] && start == null) start = i;
+      if ((!occ[i] || i === BINS) && start != null) { ranges.push([minX + start * res, minX + (occ[i] ? i + 1 : i) * res]); start = null; }
     }
     // 연결기처럼 짧은 조각은 옆 객차에 붙임
     const minCar = H * 1.5;
@@ -442,31 +482,65 @@ function articulate(g, opts = {}) {
         ranges.splice(i, 1); i = -1;
       }
     }
-    const carLen = opts.carLength || H * 5;      // KTX 객차 약 19~23m ≈ 높이의 5배
-    if (ranges.length < 2 && L > carLen * 1.5) {  // 틈이 없으면 일정 간격으로
+    const carLen = opts.carLength || H * 5;      // 틈이 없으면 일정 간격으로
+    if (ranges.length < 2 && L > carLen * 1.5) {
       const n = Math.round(L / carLen), w = L / n;
       ranges = [];
       for (let i = 0; i < n; i++) ranges.push([minX + i * w, minX + (i + 1) * w]);
     }
   }
+  // 경계를 틈 한가운데로
+  const cuts = [];
+  for (let i = 0; i + 1 < ranges.length; i++) cuts.push((ranges[i][1] + ranges[i + 1][0]) / 2);
+  const carOf = (x) => { let k = 0; while (k < cuts.length && x > cuts[k]) k++; return k; };
 
   const root = new THREE.Group();
-  const cars = ranges.map(([a, b]) => {
-    const pivot = new THREE.Group();
+  const bounds = [minX, ...cuts, maxX];
+  const cars = bounds.slice(0, -1).map((a, i) => {
+    const b = bounds[i + 1], pivot = new THREE.Group();
     pivot.position.set((a + b) / 2, 0, 0);
     root.add(pivot);
     return { obj: pivot, cx: (a + b) / 2, half: (b - a) / 2 };
   });
   root.updateMatrixWorld(true);
-  let spanning = 0;
-  for (const it of items) {
-    let k = cars.findIndex((c) => it.cx >= c.cx - c.half - 1e-6 && it.cx <= c.cx + c.half + 1e-6);
-    if (k < 0) k = cars.reduce((best, c, i) => (Math.abs(c.cx - it.cx) < Math.abs(cars[best].cx - it.cx) ? i : best), 0);
-    if (it.x1 - it.x0 > cars[k].half * 3) spanning++;
-    cars[k].obj.attach(it.o);
+
+  // 2) 메쉬를 객차에 배정. 여러 객차에 걸친 메쉬(압축 때 합쳐진 덩어리)는 삼각형 단위로 잘라서 나눔
+  let splitCount = 0;
+  for (const o of meshes) {
+    const tri = [];
+    triX(o, (t, a, b, c) => tri.push(carOf(c)));
+    const first = tri[0];
+    if (tri.every((k) => k === first)) { cars[first ?? 0].obj.attach(o); continue; }
+    splitCount++;
+    const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry;
+    const groups = geo.groups.length ? geo.groups : [{ start: 0, count: geo.attributes.position.count, materialIndex: 0 }];
+    const triMat = new Int32Array(tri.length);
+    for (const gr of groups) for (let t = gr.start / 3; t < (gr.start + gr.count) / 3; t++) triMat[t] = gr.materialIndex ?? 0;
+    const names = Object.keys(geo.attributes);
+    cars.forEach((car, k) => {
+      const list = [];
+      tri.forEach((kk, t) => { if (kk === k) list.push(t); });
+      if (!list.length) return;
+      list.sort((a, b) => triMat[a] - triMat[b]);         // 재질별로 묶기
+      const ng = new THREE.BufferGeometry();
+      for (const nm of names) {
+        const at = geo.attributes[nm], sz = at.itemSize;
+        const arr = new at.array.constructor(list.length * 3 * sz);
+        list.forEach((t, j) => { for (let q = 0; q < 3 * sz; q++) arr[j * 3 * sz + q] = at.array[t * 3 * sz + q]; });
+        ng.setAttribute(nm, new THREE.BufferAttribute(arr, sz, at.normalized));
+      }
+      let gs = 0;
+      for (let j = 1; j <= list.length; j++) {
+        if (j === list.length || triMat[list[j]] !== triMat[list[j - 1]]) { ng.addGroup(gs * 3, (j - gs) * 3, triMat[list[gs]]); gs = j; }
+      }
+      const piece = new THREE.Mesh(ng, o.material);
+      o.matrixWorld.decompose(piece.position, piece.quaternion, piece.scale);
+      car.obj.attach(piece);
+    });
+    o.removeFromParent();
   }
-  console.info(`[KTX LCD] 열차: 객차 ${cars.length}량으로 분리 (${cars.map((c) => (c.half * 2).toFixed(1) + 'm').join(', ')})`);
-  if (spanning) console.warn(`[KTX LCD] 열차: 여러 객차에 걸친 큰 메쉬 ${spanning}개 — 곡선에서 어색하면 config의 carCount를 지정해 보세요.`);
+  console.info(`[KTX LCD] 열차: 객차 ${cars.length}량으로 분리 (${cars.map((c) => (c.half * 2).toFixed(1) + 'm').join(', ')})` +
+    (inst.length ? `, 반복 파트 ${inst.length}종 풀어서 처리` : '') + (splitCount ? `, 여러 객차에 걸친 메쉬 ${splitCount}개를 객차별로 잘라 나눔` : ''));
   root.userData = { cars, maxX, length: L };
   return root;
 }
@@ -554,6 +628,8 @@ export class Intro3D {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(40, W / H, 0.1, 2000);
+    this.resize();
+    addEventListener('stage-resize', () => this.resize());
     this.ready = this.build();
   }
 
@@ -595,7 +671,7 @@ export class Intro3D {
     scene.add(this.card);
 
     // 선로 (고가교)
-    const pts = [[-260, -320], [-120, -200], [-20, -90], [30, 20], [50, 140], [40, 280]].map(([x, z]) => new THREE.Vector3(x + 500, DECK_Y, z));
+    const pts = [[-420, -470], [-260, -320], [-120, -200], [-20, -90], [30, 20], [50, 140], [40, 280], [20, 430]].map(([x, z]) => new THREE.Vector3(x + 500, DECK_Y, z));
     this.curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
     this.curveLen = this.curve.getLength();
     const N = 600;
@@ -669,6 +745,18 @@ export class Intro3D {
     scene.add(this.parked);
   }
 
+  // 화면 크기 변경: 캔버스를 스테이지 크기로, 좁은 화면(세로 등)에서는 좌우 구도가 잘리지 않게 세로 시야를 넓힘
+  resize() {
+    const w = Math.round(layout.W), h = Math.round(layout.H), a = w / h;
+    this.renderer.setPixelRatio(Math.min(2, (window.devicePixelRatio || 1) * layout.s));
+    this.renderer.setSize(w, h, false);
+    const hFov = 2 * Math.atan(Math.tan((20 * Math.PI) / 180) * (W / H));   // 기준 화면의 가로 시야
+    const vFov = a < W / H ? 2 * Math.atan(Math.tan(hFov / 2) / a) : (40 * Math.PI) / 180;
+    this.camera.aspect = a;
+    this.camera.fov = (vFov * 180) / Math.PI;
+    this.camera.updateProjectionMatrix();
+  }
+
   // 곡선 위 거리 d(m)의 점 + 옆방향
   at(d, lateral = 0, dy = 0) {
     const u = clamp01(d / this.curveLen);
@@ -679,7 +767,14 @@ export class Intro3D {
 
   // 곡선 위 거리 d의 선로 중심점
   railPoint(d) {
-    const p = this.curve.getPointAt(clamp01(d / this.curveLen));
+    // 선로 끝을 넘어가는 객차는 끝에서 직선으로 연장 (끝 한 점에 몰리지 않도록)
+    const L = this.curveLen;
+    const u = clamp01(d / L);
+    const p = this.curve.getPointAt(u);
+    if (d < 0 || d > L) {
+      const t = this.curve.getTangentAt(u);
+      p.addScaledVector(t, d < 0 ? d : d - L);
+    }
     return new THREE.Vector3(p.x, 0, p.z);
   }
 

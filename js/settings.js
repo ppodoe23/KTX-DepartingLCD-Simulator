@@ -1,5 +1,5 @@
 // 사이트에서 노선(출발역 · 정차역 · 종착역 · 시각) 지정하기
-//  - S 키로 설정창 열기 / 닫기 (Esc로도 닫힘)
+//  - S 키로 설정창 열기 / 닫기 (Esc로도 닫힘). 휴대폰은 화면을 길게 누르기
 //  - [적용]: 브라우저에 저장(localStorage)하고 처음부터 다시 재생
 //  - [링크 복사]: 지금 노선이 담긴 주소를 복사 (다른 PC에서도 같은 노선으로 열림)
 //  - [기본값]: config.js의 노선으로 되돌리기
@@ -98,7 +98,7 @@ export function initSettings(current, currentTimes, defaults) {
           <button class="st-link">링크 복사</button>
           <button class="st-apply">적용</button>
         </div>
-        <p class="st-hint">역 이름은 목록에서 고르거나 직접 입력하세요. 출발역은 출발 시각, 나머지는 도착 시각이에요. 설정창은 S 키로도 열고 닫을 수 있어요.</p>
+        <p class="st-hint">역 이름은 목록에서 고르거나 직접 입력하세요. 출발역은 출발 시각, 나머지는 도착 시각이에요. 설정창은 S 키(휴대폰은 화면 길게 누르기)로 열 수 있어요.</p>
       </div>
     </div>`;
   document.body.appendChild(wrap);
@@ -150,6 +150,18 @@ export function initSettings(current, currentTimes, defaults) {
     if (e.key === 's' || e.key === 'S') open(panel.hidden);
     if (e.key === 'Escape') open(false);
   });
+  // 휴대폰·태블릿: 화면을 0.7초 길게 누르면 설정창 열기
+  let lp = null;
+  const cancelLp = () => { if (lp) { clearTimeout(lp.t); lp = null; } };
+  addEventListener('pointerdown', (e) => {
+    if (!panel.hidden || e.target.closest('#st-panel')) return;
+    cancelLp();
+    lp = { x: e.clientX, y: e.clientY, t: setTimeout(() => { lp = null; open(true); }, 700) };
+  });
+  addEventListener('pointermove', (e) => { if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 12) cancelLp(); });
+  addEventListener('pointerup', cancelLp);
+  addEventListener('pointercancel', cancelLp);
+  document.getElementById('viewport')?.addEventListener('contextmenu', (e) => e.preventDefault());
 
   rows.addEventListener('click', (e) => {
     const row = e.target.closest('.st-row'); if (!row) return;

@@ -2,6 +2,7 @@ import cfg from './config.js';
 import { anim, sleep, h } from './util.js';
 import { StopGuide } from './stopGuide.js';
 import { resolveRoute } from './route.js';
+import { layout, computeLayout } from './layout.js';
 import { RouteMap } from './routeMap.js';
 import { loadSettings, initSettings, autoTimes } from './settings.js';
 
@@ -9,9 +10,21 @@ const $ = (s) => document.querySelector(s);
 const stage = $('#stage');
 
 // ── 화면 맞춤 (1280x720 → 창 크기) ─────────────────────────
+// ── 반응형: 스테이지를 창에 꽉 채우고, 안내 내용은 가운데 상자에 ─────────
+let lastMode = null;
 function fit() {
-  const k = Math.min(innerWidth / 1280, innerHeight / 720);
-  stage.style.transform = `scale(${k})`;
+  const L = computeLayout();
+  stage.style.width = L.W + 'px';
+  stage.style.height = L.H + 'px';
+  stage.style.transform = `scale(${L.s})`;
+  for (const el of document.querySelectorAll('.content-box')) {
+    Object.assign(el.style, { left: L.box.x + 'px', top: L.box.y + 'px', width: L.box.w + 'px', height: L.box.h + 'px', right: 'auto', bottom: 'auto' });
+  }
+  document.body.classList.toggle('portrait', L.mode === 'port');
+  dispatchEvent(new CustomEvent('stage-resize'));
+  // 가로 ↔ 세로가 바뀌면 정차역 화면 배치가 달라지므로 처음부터 다시
+  if (lastMode && lastMode !== L.mode) location.reload();
+  lastMode = L.mode;
 }
 addEventListener('resize', fit); fit();
 

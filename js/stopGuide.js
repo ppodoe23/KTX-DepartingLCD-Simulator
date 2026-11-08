@@ -4,11 +4,14 @@
 //  도착(arrive): 캐릭터 원이 노선 경로를 따라 다음 역으로 이동(점선이 뒤따라 그려짐) → 도착하면 링이 피어남 → 정보 바 표시
 import { anim, h, splitTime, fitWidth, EASE_OUT, EASE_IN, EASE_BACK } from './util.js';
 import { buildRoutePath } from './routePath.js';
+import { layout } from './layout.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const R_OUT = 132, R_IN = 80, C = 135;
 const RING_Y = 300;                                   // 링 중심의 화면 y
-const SCREEN = { right: { x: 1085, y: RING_Y }, left: { x: 200, y: RING_Y } };
+const SCREEN_LAND = { right: { x: 1085, y: RING_Y }, left: { x: 200, y: RING_Y } };
+const SCREEN_PORT = { right: { x: 360, y: 330 }, left: { x: 360, y: 330 } };   // 세로 화면: 링은 위 가운데
+const screenPos = (side) => (layout.mode === 'port' ? SCREEN_PORT : SCREEN_LAND)[side];
 const TRAVEL_MS = 2000;                               // 캐릭터 이동 시간
 const SPAN_PX = 820;                                  // 이전 역 ↔ 현재 역 직선거리를 화면에서 이 정도로 보이게 확대
 
@@ -155,7 +158,7 @@ export class StopGuide {
 
   // idx: 정차역 순번(0부터). 노선 전체(출발역 포함)에서는 idx+1 번째 역
   async arrive(stop, side, idx) {
-    const S = SCREEN[side];
+    const S = screenPos(side);
     if (!this.rp) { this.placeChar(S); return this.bloom(stop, side, S); }
     const i = idx + 1;
     const A = this.rp.stationXY[i - 1], B = this.rp.stationXY[i];
@@ -191,7 +194,7 @@ export class StopGuide {
   async bloom(stop, side, W) {
     const cfg = this.cfg;
     const t = splitTime(stop.time || stop.arrive);
-    const pillX = side === 'right' ? 115 : 400;
+    const pillX = layout.mode === 'port' ? 40 : (side === 'right' ? 115 : 400);
 
     const ring = buildRing(stop.province);
     ring.outer.style.left = W.x - 135 + 'px';
@@ -220,7 +223,7 @@ export class StopGuide {
     this.layer.appendChild(root);
     fitWidth(name, 700);
 
-    const origin = side === 'right' ? '100% 50%' : '0% 50%';
+    const origin = layout.mode === 'port' ? '50% 50%' : (side === 'right' ? '100% 50%' : '0% 50%');
     pName.style.transformOrigin = pArr.style.transformOrigin = origin;
     for (const el of [route, wrap, roman, lab, arrow, ampm, time]) el.style.opacity = '0';
     pName.style.transform = pArr.style.transform = 'scaleX(0)';

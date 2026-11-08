@@ -2,9 +2,10 @@
 // 출발역에서 확대된 상태로 시작 → 전체 지도로 줌아웃하며 노선이 역 순서대로 그려짐 → 첫 정차역으로 줌인
 import { NORTH_KOREA, PROVINCES, project } from './data/koreaMap.js';
 import { buildRoutePath } from './routePath.js';
+import { layout } from './layout.js';
 
 const NS = 'http://www.w3.org/2000/svg';
-const W = 1280, H = 720, AR = W / H;
+const AR = 1280 / 720;   // 지도 구도 기준 비율 (view.h = 기준 상자 720px 높이에 담길 지도 범위)
 const mk = (tag, attrs = {}, parent) => {
   const el = document.createElementNS(NS, tag);
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
@@ -22,7 +23,7 @@ export class RouteMap {
     section.innerHTML = '';
     const clouds = document.createElement('div'); clouds.className = 'map-clouds';
     section.appendChild(clouds);
-    this.svg = mk('svg', { width: W, height: H, preserveAspectRatio: 'xMidYMid meet' }, section);
+    this.svg = mk('svg', { preserveAspectRatio: 'xMidYMid meet' }, section);
     const g = mk('g', {}, this.svg);
     mk('path', { d: NORTH_KOREA, class: 'nk' }, g);
     const originProv = route.origin.province;
@@ -67,7 +68,7 @@ export class RouteMap {
 
   // 전체 지도 구도 기준으로 역 이름이 다른 역/이름과 겹치면 반대쪽으로 옮김 (labelSide 직접 지정한 역은 제외)
   avoidLabelOverlap(stations) {
-    const u = this.full.h / H;
+    const u = this.unit(this.full.h);
     const box = (m, side) => {
       const w = (m.lab.textContent.length * 15.5 + 4) * u, h = 16 * u;
       const x0 = side === 'right' ? m.x + 9 * u : m.x - 9 * u - w;
@@ -100,10 +101,16 @@ export class RouteMap {
     return 1 - Math.exp(-6.5 * age) * Math.cos(age * 17);
   }
 
+  // 화면 1px 당 지도 단위: 지도 범위(v.h, 16:9 기준)가 가운데 콘텐츠 상자에 들어가도록
+  unit(h) {
+    const b = layout.box;
+    return Math.max(h / b.h, (h * AR) / b.w);
+  }
+
   setView(v) {
-    const w = v.h * AR;
-    this.svg.setAttribute('viewBox', `${v.cx - w / 2} ${v.cy - v.h / 2} ${w} ${v.h}`);
-    const u = v.h / H; // 화면 1px 당 지도 단위
+    const u = this.unit(v.h), W = layout.W, H = layout.H;
+    this.svg.setAttribute('width', W); this.svg.setAttribute('height', H);
+    this.svg.setAttribute('viewBox', `${v.cx - (W * u) / 2} ${v.cy - (H * u) / 2} ${W * u} ${H * u}`);
     this.line.setAttribute('stroke-width', 2.8 * u);
     for (const m of this.marks) {
       m.dot.setAttribute('r', 5 * u * Math.max(0, RouteMap.bounce(m.age)));
@@ -118,8 +125,8 @@ export class RouteMap {
 
   // 지도 좌표 → 화면 좌표
   toScreen([x, y]) {
-    const v = this.view, w = v.h * AR;
-    return { x: ((x - (v.cx - w / 2)) / w) * W, y: ((y - (v.cy - v.h / 2)) / v.h) * H };
+    const v = this.view, u = this.unit(v.h);
+    return { x: (x - v.cx) / u + layout.W / 2, y: (y - v.cy) / u + layout.H / 2 };
   }
 
   static lerpView(a, b, k) {
@@ -151,7 +158,7 @@ export class RouteMap {
 
   updatePop(t, T) {
     const k = ss(seg(t, T - 1.7, T - 1.1));
-    const u = this.view.h / H;
+    const u = this.unit(this.view.h);
     this.pop.setAttribute('opacity', k);
     this.pop.setAttribute('r', 16 * u * k);
     this.pop.setAttribute('stroke-width', 6 * u);

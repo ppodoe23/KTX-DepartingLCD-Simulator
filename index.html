@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>KTX LCD 안내화면</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -29,13 +29,13 @@
 
       <!-- 정차역 안내 -->
       <div id="sky"><div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div><div class="cloud c4"></div></div>
-      <div id="stopLayer"></div>
+      <div id="stopLayer" class="content-box"></div>
       <div id="tag">정차역 안내</div>
 
       <!-- 안전 안내 -->
       <section id="notice">
         <video id="noticeBg" muted loop playsinline></video>
-        <div class="notice-box"><div class="notice-scroll"></div></div>
+        <div class="notice-wrap content-box"><div class="notice-box"><div class="notice-scroll"></div></div></div>
         <div class="ticker"><span></span></div>
       </section>
       <video id="afterVideo" playsinline></video>
